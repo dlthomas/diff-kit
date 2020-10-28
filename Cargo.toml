@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 unidiff = "0.3.3"
+json = "0.12.4"
