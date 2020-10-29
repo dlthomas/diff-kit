@@ -8,21 +8,33 @@ fn main() {
     let mut patches = PatchSet::new();
     patches.parse(input).ok().expect("error parsing diff");
 
+    let pwd = std::env::var("PWD").unwrap();
+    let repo_root = Path::new(&pwd)
+        .ancestors()
+        .find(|p| p.join(".git").exists())
+        .expect(".git not found in path to root from PWD")
+        .to_str()
+        .expect("unexpected non-utf8 in PWD");
+
+
     let mut executed = BTreeSet::new();
     for arg in std::env::args().skip(1) {
-        let prefix = Path::new(&arg)
-            .ancestors()
-            .find(|p| p.join(".git").exists())
-            .expect(".git not found in path to root from argument");
-
         match read_to_string(&arg) {
             Err(err) => eprintln!("error reading file {}: {}", arg, err),
             Ok(json) => match json::parse(&json) {
                 Err(err) => eprintln!("error parsing json: {}", err),
                 Ok(coverage) => {
                     for (file, coverage) in coverage.entries() {
+                        let file = Path::new(file)
+                            .canonicalize()
+                            .expect("error canonicalizing file path");
+                        let prefix = file
+                            .ancestors()
+                            .find(|p| p.join(".git").exists())
+                            .expect(".git not found in path to root from file");
+
                         let mut statements = BTreeSet::new();
-                        let file = Path::new(file).strip_prefix(prefix).unwrap();
+                        let file = file.strip_prefix(prefix).unwrap();
                         let file = Rc::new(file.to_string_lossy().to_string());
                         for (idx, count) in coverage["s"].entries() {
                             if let Some(count) = count.as_usize() {
@@ -68,15 +80,16 @@ fn main() {
                     };
 
                     if executed.contains(&(target_file.clone(), line_no))
-                        || executed.contains(&(target_file.clone(), line_no + 1)) {
-                        println!("{}:{}: - {}", target_file, line_no, line.value)
+                        || executed.contains(&(target_file.clone(), line_no + 1))
+                    {
+                        println!("{}/{}:{}: - {}", repo_root, target_file, line_no, line.value)
                     }
                 }
 
                 if line.is_added() {
                     if let Some(line_no) = line.target_line_no {
                         if executed.contains(&(target_file.clone(), line_no)) {
-                            println!("{}:{}: + {}", target_file, line_no, line.value)
+                            println!("{}/{}:{}: + {}", repo_root, target_file, line_no, line.value)
                         }
                     }
                 }
